@@ -1,0 +1,28 @@
+# Secrets and environment files
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+
+# Next.js and Node
+node_modules/
+.next/
+out/
+npm-debug.log*
+
+# Build and generated files
+dist/
+build/
+coverage/
+
+# Editors and operating system
+.vscode/
+.idea/
+.DS_Store
