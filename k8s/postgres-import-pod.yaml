@@ -1,0 +1,57 @@
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: task-postgres-import
+  namespace: portfolio
+  labels:
+    app: task-postgres-import
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 999
+  containers:
+    - name: importer
+      image: task-api:1.1
+      imagePullPolicy: Never
+      command:
+        - python
+        - -c
+        - "import time; time.sleep(3600)"
+      envFrom:
+        - configMapRef:
+            name: task-api-config
+      env:
+        - name: DB_ENGINE
+          value: "postgres"
+        - name: DB_NAME
+          value: "taskflow"
+        - name: DB_HOST
+          value: "task-postgres"
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: task-postgres-secret
+              key: POSTGRES_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: task-postgres-secret
+              key: POSTGRES_PASSWORD
+        - name: DJANGO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: task-api-secret
+              key: DJANGO_SECRET_KEY
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+
