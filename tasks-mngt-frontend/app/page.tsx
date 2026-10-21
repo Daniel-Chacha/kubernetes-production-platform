@@ -1,390 +1,281 @@
-"use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
-type Task = {
-  id: number;
-  title: string;
-  completed: boolean;
-  created_at?: string;
-};
+const features = [
+  {
+    number: "01",
+    title: "Stay organized",
+    description:
+      "Keep your tasks in one place, prioritize what matters, and spend less time figuring out what to do next.",
+    icon: "◫",
+  },
+  {
+    number: "02",
+    title: "Track your progress",
+    description:
+      "See what you have completed and what still needs attention. Turn your daily effort into visible progress.",
+    icon: "↗",
+  },
+  {
+    number: "03",
+    title: "Your tasks, your space",
+    description:
+      "Sign in to manage your personal task list. Your account keeps your work separate from everyone else's.",
+    icon: "◇",
+  },
+];
 
-type TaskFilter = "all" | "pending" | "completed";
+const steps = [
+  {
+    number: "01",
+    title: "Create your account",
+    description: "Get started with your own secure Taskflow account.",
+  },
+  {
+    number: "02",
+    title: "Add your tasks",
+    description: "Write down what needs to get done and build your task list.",
+  },
+  {
+    number: "03",
+    title: "Make progress",
+    description: "Work through your list and keep track of your progress.",
+  },
+];
 
-function formatDate(value?: string): string {
-  if (!value) return "Date unavailable";
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Date unavailable";
-
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
-}
-
-export default function Home() {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [title, setTitle] = useState("");
-  const [filter, setFilter] = useState<TaskFilter>("all");
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-
-  const loadTasks = useCallback(async () => {
-    setLoading(true);
-    setError("");
-
-    try {
-      const response = await fetch("/api/tasks/", {
-        cache: "no-store",
-      });
-
-      if (!response.ok) {
-        throw new Error(`Unable to load tasks (HTTP ${response.status}).`);
-      }
-
-      const data: unknown = await response.json();
-
-
-
-
-if (
-  typeof data !== "object" ||
-  data === null ||
-  !("tasks" in data) ||
-  !Array.isArray(data.tasks)
-) {
-  throw new Error("The task API returned an unexpected response.");
-}
-
-setTasks(data.tasks as Task[]);
-
-
-
-    } catch (cause: unknown) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "An unexpected error occurred while loading tasks.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadTasks();
-  }, [loadTasks]);
-
-  const counts = useMemo(
-    () => ({
-      all: tasks.length,
-      pending: tasks.filter((task) => !task.completed).length,
-      completed: tasks.filter((task) => task.completed).length,
-    }),
-    [tasks],
-  );
-
-  const visibleTasks = useMemo(
-    () =>
-      tasks.filter((task) => {
-        if (filter === "pending") return !task.completed;
-        if (filter === "completed") return task.completed;
-        return true;
-      }),
-    [tasks, filter],
-  );
-
-  async function handleCreateTask(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const trimmedTitle = title.trim();
-    if (!trimmedTitle || saving) return;
-
-    setSaving(true);
-    setError("");
-    setSuccess("");
-
-    try {
-      const response = await fetch("/api/tasks/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: trimmedTitle }),
-      });
-
-      if (!response.ok) {
-        const details = await response.text();
-        throw new Error(
-          `Unable to create task (HTTP ${response.status}). ${details.slice(0, 160)}`,
-        );
-      }
-
-      const createdTask: unknown = await response.json();
-
-      if (
-        typeof createdTask !== "object" ||
-        createdTask === null ||
-        !("id" in createdTask) ||
-        !("title" in createdTask) ||
-        !("completed" in createdTask)
-      ) {
-        throw new Error("The API created a response in an unexpected format.");
-      }
-
-      setTasks((current) => [
-        createdTask as Task,
-        ...current.filter((task) => task.id !== (createdTask as Task).id),
-      ]);
-      setTitle("");
-      setFilter("all");
-      setSuccess("Task created successfully.");
-    } catch (cause: unknown) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "An unexpected error occurred while creating the task.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
+export default function LandingPage() {
   return (
-    <main className="dashboard">
-      <aside className="sidebar">
-        <a className="brand" href="/" aria-label="Taskflow home">
-          <span className="brand-mark">T</span>
-          <span>
-            <strong>Taskflow</strong>
-            <small>WORKSPACE</small>
-          </span>
-        </a>
+    <main className="landing">
+      <header className="landing-nav">
+        <div className="landing-nav-inner">
+          <Link href="/" className="landing-brand">
+            Taskflow<span>.</span>
+          </Link>
 
-        <div className="sidebar-section-label">WORKSPACE</div>
+          <nav className="landing-links" aria-label="Main navigation">
+            <a href="#features">Features</a>
+            <a href="#how-it-works">How it works</a>
+            <a href="#about">About</a>
+          </nav>
 
-        <nav className="sidebar-nav" aria-label="Task navigation">
-          <a className="nav-item active" href="#tasks">
-            <span className="nav-icon" aria-hidden="true">▤</span>
-            <span>My tasks</span>
-            <span className="nav-count">{counts.all}</span>
-          </a>
-          <button
-            className="nav-item"
-            type="button"
-            onClick={() => setFilter("pending")}
-          >
-            <span className="nav-icon" aria-hidden="true">◷</span>
-            <span>Pending</span>
-          </button>
-          <button
-            className="nav-item"
-            type="button"
-            onClick={() => setFilter("completed")}
-          >
-            <span className="nav-icon" aria-hidden="true">✓</span>
-            <span>Completed</span>
-          </button>
-        </nav>
-
-        <div className="sidebar-bottom">
-          <div className="api-status">
-            <span className="status-dot" />
-            <span>
-              <strong>Task workspace</strong>
-              <small>Django REST API</small>
-            </span>
+          <div className="landing-nav-actions">
+            <Link href="/login" className="landing-signin">
+              Sign in
+            </Link>
+            <Link href="/register" className="landing-nav-cta">
+              Get started <span aria-hidden="true">↗</span>
+            </Link>
           </div>
-          <p className="sidebar-footer">Built with Next.js & Kubernetes</p>
         </div>
-      </aside>
+      </header>
 
-      <section className="workspace" id="tasks">
-        <header className="topbar">
-          <div className="breadcrumb">Workspace <span>/</span> My tasks</div>
-          <div className="profile">
-            <div className="profile-avatar">D</div>
-            <div className="profile-copy">
-              <strong>Developer</strong>
-              <span>Personal workspace</span>
+      <section className="landing-hero">
+        <div className="landing-hero-content">
+          <div className="landing-eyebrow">
+            <span className="landing-status-dot" />
+            A simpler way to get things done
+          </div>
+
+          <h1>
+            Your work,
+            <br />
+            <span>under control.</span>
+          </h1>
+
+          <p className="landing-hero-description">
+            Bring your tasks together, focus on what matters, and make
+            meaningful progress every day. Less clutter, more doing.
+          </p>
+
+          <div className="landing-hero-actions">
+            <Link href="/register" className="landing-primary-button">
+              Get started for free <span aria-hidden="true">→</span>
+            </Link>
+            <Link href="/login" className="landing-secondary-button">
+              I already have an account
+            </Link>
+          </div>
+
+          <div className="landing-trust-note">
+            <span aria-hidden="true">✓</span>
+            Simple to use. Built for everyday productivity.
+          </div>
+        </div>
+
+        <div className="landing-preview" aria-label="Taskflow dashboard preview">
+          <div className="preview-window">
+            <div className="preview-topbar">
+              <div className="preview-brand">
+                <span className="preview-brand-mark">T</span>
+                Taskflow
+              </div>
+              <div className="preview-window-dots">
+                <span />
+                <span />
+                <span />
+              </div>
+            </div>
+
+            <div className="preview-body">
+              <aside className="preview-sidebar">
+                <p className="preview-sidebar-label">WORKSPACE</p>
+                <div className="preview-menu-item preview-menu-active">
+                  <span>▦</span> Overview
+                </div>
+                <div className="preview-menu-item">
+                  <span>☷</span> My tasks
+                </div>
+                <div className="preview-menu-item">
+                  <span>✓</span> Completed
+                </div>
+
+                <div className="preview-sidebar-bottom">
+                  <span className="preview-avatar">A</span>
+                  <div>
+                    <strong>Alex Morgan</strong>
+                    <small>Personal workspace</small>
+                  </div>
+                </div>
+              </aside>
+
+              <div className="preview-main">
+                <div className="preview-greeting">
+                  <div>
+                    <p>YOUR WORKSPACE</p>
+                    <h2>Good morning, Alex.</h2>
+                    <span>Here&apos;s your progress at a glance.</span>
+                  </div>
+                  <div className="preview-date">Today</div>
+                </div>
+
+                <div className="preview-stats">
+                  <div className="preview-stat">
+                    <span>Total tasks</span>
+                    <strong>12</strong>
+                    <small>Across your list</small>
+                  </div>
+                  <div className="preview-stat">
+                    <span>Completed</span>
+                    <strong>8</strong>
+                    <small className="preview-positive">Making progress</small>
+                  </div>
+                </div>
+
+                <div className="preview-task-heading">
+                  <strong>Today&apos;s priorities</strong>
+                  <span>3 tasks</span>
+                </div>
+
+                <div className="preview-task preview-task-done">
+                  <span className="preview-checkbox">✓</span>
+                  <span>Finalize project proposal</span>
+                  <span className="preview-task-tag">Done</span>
+                </div>
+
+                <div className="preview-task">
+                  <span className="preview-checkbox" />
+                  <span>Review sprint priorities</span>
+                  <span className="preview-task-tag preview-tag-progress">
+                    Next
+                  </span>
+                </div>
+
+                <div className="preview-task">
+                  <span className="preview-checkbox" />
+                  <span>Prepare weekly update</span>
+                  <span className="preview-task-tag preview-tag-later">
+                    Later
+                  </span>
+                </div>
+
+                <div className="preview-progress">
+                  <div>
+                    <span>Daily progress</span>
+                    <strong>67%</strong>
+                  </div>
+                  <div className="preview-progress-track">
+                    <div className="preview-progress-fill" />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-        </header>
 
-        <div className="content">
-          <section className="page-heading">
+          <div className="preview-floating-card">
+            <span className="preview-floating-icon">✓</span>
             <div>
-              <p className="eyebrow">YOUR WORKSPACE</p>
-              <h1>My tasks<span className="heading-period">.</span></h1>
-              <p className="page-description">
-                Keep track of your work, one task at a time.
-              </p>
+              <strong>One step at a time.</strong>
+              <p>Every completed task counts.</p>
             </div>
-            <button
-              className="refresh-button"
-              type="button"
-              onClick={() => void loadTasks()}
-              disabled={loading}
-            >
-              <span aria-hidden="true">↻</span> Refresh
-            </button>
-          </section>
-
-          <section className="stats-grid" aria-label="Task statistics">
-            <article className="stat-card">
-              <div className="stat-top">
-                <span className="stat-label">All tasks</span>
-                <span className="stat-icon stat-icon-purple">▤</span>
-              </div>
-              <strong className="stat-value">{counts.all}</strong>
-              <span className="stat-note">Tasks in your workspace</span>
-            </article>
-
-            <article className="stat-card">
-              <div className="stat-top">
-                <span className="stat-label">Pending</span>
-                <span className="stat-icon stat-icon-orange">◷</span>
-              </div>
-              <strong className="stat-value">{counts.pending}</strong>
-              <span className="stat-note">Still to be completed</span>
-            </article>
-
-            <article className="stat-card">
-              <div className="stat-top">
-                <span className="stat-label">Completed</span>
-                <span className="stat-icon stat-icon-green">✓</span>
-              </div>
-              <strong className="stat-value">{counts.completed}</strong>
-              <span className="stat-note">Successfully finished</span>
-            </article>
-          </section>
-
-          <section className="task-panel">
-            <div className="panel-heading">
-              <div>
-                <h2>Task list</h2>
-                <p>Your tasks, fetched from the backend.</p>
-              </div>
-              <span className="task-total">
-                {visibleTasks.length} {visibleTasks.length === 1 ? "task" : "tasks"}
-              </span>
-            </div>
-
-            <form className="create-form" onSubmit={handleCreateTask}>
-              <label className="visually-hidden" htmlFor="task-title">
-                New task title
-              </label>
-              <span className="input-plus" aria-hidden="true">+</span>
-              <input
-                id="task-title"
-                name="title"
-                type="text"
-                placeholder="What needs to get done?"
-                value={title}
-                onChange={(event) => {
-                  setTitle(event.target.value);
-                  setSuccess("");
-                }}
-                maxLength={200}
-                required
-              />
-              <button type="submit" disabled={saving || !title.trim()}>
-                {saving ? "Adding..." : "Add task"}
-              </button>
-            </form>
-
-            {error && (
-              <div className="message message-error" role="alert">
-                <strong>Something went wrong.</strong>
-                <span>{error}</span>
-                <button type="button" onClick={() => void loadTasks()}>
-                  Try again
-                </button>
-              </div>
-            )}
-
-            {success && (
-              <div className="message message-success" role="status">
-                {success}
-              </div>
-            )}
-
-            <div className="filter-row" aria-label="Filter tasks">
-              {(["all", "pending", "completed"] as const).map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  className={`filter-button ${filter === item ? "selected" : ""}`}
-                  onClick={() => setFilter(item)}
-                  aria-pressed={filter === item}
-                >
-                  {item.charAt(0).toUpperCase() + item.slice(1)}
-                  <span>{counts[item]}</span>
-                </button>
-              ))}
-            </div>
-
-            {loading ? (
-              <div className="empty-state">
-                <div className="loading-spinner" />
-                <h3>Loading your tasks</h3>
-                <p>Connecting to the task API...</p>
-              </div>
-            ) : visibleTasks.length === 0 ? (
-              <div className="empty-state">
-                <div className="empty-icon" aria-hidden="true">✓</div>
-                <h3>
-                  {filter === "completed"
-                    ? "No completed tasks yet"
-                    : filter === "pending"
-                      ? "You're all caught up"
-                      : "Your task list is empty"}
-                </h3>
-                <p>
-                  {filter === "all"
-                    ? "Add your first task using the form above."
-                    : "Try another filter or add a new task."}
-                </p>
-              </div>
-            ) : (
-              <ul className="task-list">
-                {visibleTasks.map((task) => (
-                  <li className="task-row" key={task.id}>
-                    <span
-                      className={`task-indicator ${task.completed ? "is-complete" : ""}`}
-                      aria-label={task.completed ? "Completed" : "Pending"}
-                    >
-                      {task.completed ? "✓" : ""}
-                    </span>
-                    <div className="task-details">
-                      <span className={task.completed ? "task-title done" : "task-title"}>
-                        {task.title}
-                      </span>
-                      <span className="task-date">
-                        Task #{task.id} · Created {formatDate(task.created_at)}
-                      </span>
-                    </div>
-                    <span className={`task-status ${task.completed ? "status-completed" : "status-pending"}`}>
-                      {task.completed ? "Completed" : "Pending"}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            <footer className="panel-footer">
-              <span>Changes are stored by your Django API.</span>
-              <span className="footer-live"><span /> API-connected</span>
-            </footer>
-          </section>
-
-          <footer className="page-footer">
-            Taskflow <span>·</span> A Kubernetes production platform project
-          </footer>
+          </div>
         </div>
       </section>
+
+      <section className="landing-features" id="features">
+        <div className="landing-section-heading">
+          <p className="landing-section-label">BUILT FOR YOUR DAY</p>
+          <h2>Productivity without the noise.</h2>
+          <p>
+            Everything you need to keep moving forward, without the
+            unnecessary complexity.
+          </p>
+        </div>
+
+        <div className="landing-feature-grid">
+          {features.map((feature) => (
+            <article className="landing-feature-card" key={feature.number}>
+              <div className="landing-feature-icon">{feature.icon}</div>
+              <span className="landing-feature-number">{feature.number}</span>
+              <h3>{feature.title}</h3>
+              <p>{feature.description}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="landing-workflow" id="how-it-works">
+        <div className="landing-section-heading">
+          <p className="landing-section-label">GET STARTED IN MINUTES</p>
+          <h2>A better workflow starts here.</h2>
+          <p>Three simple steps to a more organized day.</p>
+        </div>
+
+        <div className="landing-steps">
+          {steps.map((step) => (
+            <article className="landing-step" key={step.number}>
+              <span className="landing-step-number">{step.number}</span>
+              <h3>{step.title}</h3>
+              <p>{step.description}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="landing-cta" id="about">
+        <div>
+          <p className="landing-section-label">YOUR NEXT CHAPTER</p>
+          <h2>Make room for what matters.</h2>
+          <p>
+            Start organizing your tasks today and build momentum one
+            completed task at a time.
+          </p>
+        </div>
+        <Link href="/register" className="landing-primary-button">
+          Create your account <span aria-hidden="true">→</span>
+        </Link>
+      </section>
+
+      <footer className="landing-footer">
+        <Link href="/" className="landing-brand">
+          Taskflow<span>.</span>
+        </Link>
+        <p>Less clutter. More progress.</p>
+        <div>
+          <Link href="/login">Sign in</Link>
+          <Link href="/register">Create account</Link>
+        </div>
+        <small>© {new Date().getFullYear()} Taskflow</small>
+      </footer>
     </main>
   );
 }

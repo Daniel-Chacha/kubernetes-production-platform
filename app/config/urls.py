@@ -18,9 +18,21 @@ from django.contrib import admin
 from django.urls import path
 
 from tasks.views import health, task_list
+from tasks.auth_views import (
+    LoginView,
+    LogoutView,
+    RefreshView,
+    RegisterView,
+    MeView
+)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('health/', health, name='health'),
     path('api/tasks/', task_list, name='task-list'),
+    path("api/auth/register/", RegisterView.as_view(), name="auth-register"),
+    path("api/auth/token/", LoginView.as_view(), name="auth-token"),
+    path("api/auth/token/refresh/", RefreshView.as_view(), name="auth-token-refresh"),
+    path("api/auth/logout/", LogoutView.as_view(), name="auth-logout"),
+    path("api/auth/me/", MeView.as_view(), name="auth-me"),
 ]
