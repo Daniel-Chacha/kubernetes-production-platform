@@ -43,3 +43,19 @@ groups:
         annotations:
           summary: "Task API p95 latency is high"
           description: "The 95th-percentile API request latency has exceeded 1 second for at least 5 minutes."
+
+      - alert: TaskAPIRequestSuccessSLOViolation
+        expr: |
+          (
+            sum(rate(django_http_responses_total_by_status_total{status=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(django_http_responses_total_by_status_total[5m])), 0.001)
+          ) > 0.01
+          and
+          sum(rate(django_http_responses_total_by_status_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Task API request success objective is at risk"
+          description: "More than 1% of observed responses are HTTP 5xx errors with sufficient traffic for at least 5 minutes."
