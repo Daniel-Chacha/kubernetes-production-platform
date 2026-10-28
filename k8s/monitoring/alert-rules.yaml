@@ -1,0 +1,45 @@
+groups:
+  - name: taskflow-api-alerts
+    rules:
+      - alert: TaskAPIUnavailable
+        expr: up{job="task-api"} == 0 or absent(up{job="task-api"})
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Task API is unavailable"
+          description: "Prometheus has been unable to scrape the Task API for at least 2 minutes."
+
+      - alert: TaskAPIHigh5xxRate
+        expr: |
+          (
+            (
+              sum(rate(django_http_responses_total_by_status_total{status=~"5.."}[5m]))
+              or vector(0)
+            )
+            /
+            clamp_min(sum(rate(django_http_responses_total_by_status_total[5m])), 0.001)
+          ) > 0.05
+          and
+          sum(rate(django_http_responses_total_by_status_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Task API has a high HTTP 5xx error rate"
+          description: "More than 5% of API responses are HTTP 5xx errors with sufficient request traffic."
+
+      - alert: TaskAPIHighLatency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (
+              rate(django_http_requests_latency_including_middlewares_seconds_bucket{job="task-api"}[5m])
+            )
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Task API p95 latency is high"
+          description: "The 95th-percentile API request latency has exceeded 1 second for at least 5 minutes."

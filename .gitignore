@@ -30,3 +30,13 @@ coverage/
 # Local databases
 *.sqlite3
 *.sqlite3-journal
+
+
+# Local TLS certificates and private keys
+certs/
+*.pem
+*.key
+
+# Local certificate authority files
+rootCA.pem
+rootCA-key.pem
