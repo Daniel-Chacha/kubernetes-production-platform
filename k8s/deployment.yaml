@@ -20,7 +20,7 @@ spec:
         fsGroup: 999
       containers:
         - name: task-api
-          image: task-api:1.4
+          image: task-api:1.5
           imagePullPolicy: Never
           ports:
             - name: http

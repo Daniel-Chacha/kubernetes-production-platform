@@ -5,4 +5,4 @@ gunicorn==26.2.0
 sqlparse==0.6.0
 psycopg[binary]
 djangorestframework-simplejwt==5.5.1
-
+django-prometheus==2.5.0
