@@ -1,3 +1,4 @@
+
 name: TaskFlow CI
 
 on:
@@ -9,7 +10,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -77,9 +77,8 @@ jobs:
       - name: Build Next.js application
         run: npm run build
 
-
-  docker:
-    name: Build and publish Docker images
+  build-images:
+    name: Build container images
     runs-on: ubuntu-latest
     needs: [backend, frontend]
 
@@ -96,14 +95,6 @@ jobs:
         run: |
           echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
-      - name: Log in to GitHub Container Registry
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Generate API image metadata
         id: api-meta
         uses: docker/metadata-action@v5
@@ -113,13 +104,13 @@ jobs:
             type=sha,format=long
             type=raw,value=latest
 
-      - name: Build and publish API image
+      - name: Build API image archive
         uses: docker/build-push-action@v6
         with:
           context: ./app
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-          tags: ${{ steps.api-meta.outputs.tags }}
+          tags: task-api:${{ github.sha }}
           labels: ${{ steps.api-meta.outputs.labels }}
+          outputs: type=docker,dest=/tmp/task-api.tar
 
       - name: Generate frontend image metadata
         id: frontend-meta
@@ -130,11 +121,113 @@ jobs:
             type=sha,format=long
             type=raw,value=latest
 
-      - name: Build and publish frontend image
+      - name: Build frontend image archive
         uses: docker/build-push-action@v6
         with:
           context: ./tasks-mngt-frontend
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-          tags: ${{ steps.frontend-meta.outputs.tags }}
+          tags: task-frontend:${{ github.sha }}
           labels: ${{ steps.frontend-meta.outputs.labels }}
+          outputs: type=docker,dest=/tmp/task-frontend.tar
 
+      - name: Upload image archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: taskflow-images-${{ github.sha }}
+          path: |
+            /tmp/task-api.tar
+            /tmp/task-frontend.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  scan-images:
+    name: Scan container images with Trivy
+    runs-on: ubuntu-latest
+    needs: [build-images]
+
+    steps:
+      - name: Download image archives
+        uses: actions/download-artifact@v4
+        with:
+          name: taskflow-images-${{ github.sha }}
+          path: images
+
+      - name: Scan API image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          input: images/task-api.tar
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          vuln-type: os,library
+          format: table
+
+      - name: Scan frontend image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          input: images/task-frontend.tar
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          vuln-type: os,library
+          format: table
+
+  publish-images:
+    name: Publish scanned images to GHCR
+    runs-on: ubuntu-latest
+    needs: [build-images, scan-images]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Download scanned image archives
+        uses: actions/download-artifact@v4
+        with:
+          name: taskflow-images-${{ github.sha }}
+          path: images
+
+      - name: Load scanned images
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker load --input images/task-api.tar
+          docker load --input images/task-frontend.tar
+          docker image inspect "task-api:${GITHUB_SHA}" >/dev/null
+          docker image inspect "task-frontend:${GITHUB_SHA}" >/dev/null
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag and publish API image
+        shell: bash
+        run: |
+          set -euo pipefail
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          SOURCE="task-api:${GITHUB_SHA}"
+          TARGET="ghcr.io/${OWNER}/task-api"
+
+          docker tag "$SOURCE" "${TARGET}:sha-${GITHUB_SHA}"
+          docker push "${TARGET}:sha-${GITHUB_SHA}"
+
+          docker tag "$SOURCE" "${TARGET}:latest"
+          docker push "${TARGET}:latest"
+
+      - name: Tag and publish frontend image
+        shell: bash
+        run: |
+          set -euo pipefail
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          SOURCE="task-frontend:${GITHUB_SHA}"
+          TARGET="ghcr.io/${OWNER}/task-frontend"
+
+          docker tag "$SOURCE" "${TARGET}:sha-${GITHUB_SHA}"
+          docker push "${TARGET}:sha-${GITHUB_SHA}"
+
+          docker tag "$SOURCE" "${TARGET}:latest"
+          docker push "${TARGET}:latest"
