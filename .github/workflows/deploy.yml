@@ -1,0 +1,84 @@
+name: Deploy to Minikube
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: taskflow-minikube-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy TaskFlow
+    runs-on: [self-hosted, linux, x64]
+    if: github.ref == 'refs/heads/master'
+
+    steps:
+      - name: Preflight checks
+        id: preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Kubernetes context:"
+          kubectl config current-context
+
+          kubectl get namespace portfolio
+          kubectl -n portfolio get deployment task-api
+          kubectl -n portfolio get deployment task-frontend
+
+      - name: Prepare image references
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          TAG="sha-${GITHUB_SHA}"
+
+          echo "api=ghcr.io/${OWNER}/task-api:${TAG}" \
+            >> "$GITHUB_OUTPUT"
+          echo "frontend=ghcr.io/${OWNER}/task-frontend:${TAG}" \
+            >> "$GITHUB_OUTPUT"
+
+      - name: Deploy API
+        run: |
+          kubectl -n portfolio set image deployment/task-api \
+            task-api="${{ steps.image.outputs.api }}"
+
+          kubectl -n portfolio rollout status deployment/task-api \
+            --timeout=180s
+
+      - name: Deploy frontend
+        run: |
+          kubectl -n portfolio set image deployment/task-frontend \
+            frontend="${{ steps.image.outputs.frontend }}"
+
+          kubectl -n portfolio rollout status deployment/task-frontend \
+            --timeout=180s
+
+      - name: Verify HTTPS endpoint
+        run: |
+          curl --insecure --fail --silent --show-error \
+            --location --max-time 30 \
+            --output /dev/null \
+            --write-out 'HTTP status: %{http_code}\n' \
+            https://taskflow.test/
+
+      - name: Roll back application deployments on failure
+        if: failure() && steps.preflight.outcome == 'success'
+        shell: bash
+        run: |
+          echo "Deployment verification failed; attempting rollback."
+
+          kubectl -n portfolio rollout undo deployment/task-api || true
+          kubectl -n portfolio rollout undo deployment/task-frontend || true
+
+          kubectl -n portfolio rollout status deployment/task-api \
+            --timeout=180s || true
+
+          kubectl -n portfolio rollout status deployment/task-frontend \
+            --timeout=180s || true
