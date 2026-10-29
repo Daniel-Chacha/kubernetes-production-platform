@@ -2,6 +2,10 @@ name: Deploy to Minikube
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: ["TaskFlow CI"]
+    types: [completed]
+    branches: [master]
 
 permissions:
   contents: read
@@ -14,7 +18,13 @@ jobs:
   deploy:
     name: Deploy TaskFlow
     runs-on: [self-hosted, linux, x64]
-    if: github.ref == 'refs/heads/master'
+    if: >-
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == 'refs/heads/master') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'master' &&
+       github.event.workflow_run.event == 'push')
 
     steps:
       - name: Preflight checks
@@ -37,7 +47,13 @@ jobs:
           set -euo pipefail
 
           OWNER="${GITHUB_REPOSITORY_OWNER,,}"
-          TAG="sha-${GITHUB_SHA}"
+            DEPLOY_SHA="${GITHUB_SHA}"
+
+            if [[ "${GITHUB_EVENT_NAME}" == "workflow_run" ]]; then
+            DEPLOY_SHA="${{ github.event.workflow_run.head_sha }}"
+            fi
+
+            TAG="sha-${DEPLOY_SHA}"
 
           echo "api=ghcr.io/${OWNER}/task-api:${TAG}" \
             >> "$GITHUB_OUTPUT"
