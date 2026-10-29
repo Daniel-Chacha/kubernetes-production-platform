@@ -60,13 +60,34 @@ jobs:
           kubectl -n portfolio rollout status deployment/task-frontend \
             --timeout=180s
 
+
       - name: Verify HTTPS endpoint
+        shell: bash
         run: |
-          curl --insecure --fail --silent --show-error \
-            --location --max-time 30 \
-            --output /dev/null \
-            --write-out 'HTTP status: %{http_code}\n' \
-            https://taskflow.test/
+          set -euo pipefail
+
+          for attempt in {1..6}; do
+            status=$(curl --silent --show-error \
+              --output /dev/null \
+              --write-out '%{http_code}' \
+              --max-time 15 \
+              https://taskflow.test/ 2>/dev/null) || status="000"
+
+            echo "HTTPS check attempt ${attempt}/6: HTTP ${status}"
+
+            if [[ "$status" =~ ^2[0-9][0-9]$ ]]; then
+              echo "HTTPS endpoint is healthy."
+              exit 0
+            fi
+
+            if [[ "$attempt" -lt 6 ]]; then
+              sleep 10
+            fi
+          done
+
+          echo "HTTPS endpoint remained unhealthy after 6 attempts."
+          exit 1
+
 
       - name: Roll back application deployments on failure
         if: failure() && steps.preflight.outcome == 'success'
