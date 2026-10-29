@@ -20,8 +20,8 @@ spec:
         fsGroup: 999
       containers:
         - name: task-api
-          image: task-api:1.5
-          imagePullPolicy: Never
+          image: ghcr.io/daniel-chacha/task-api:sha-89a83084e79f6b79fc21d46e422115aa8f2ef6f3
+          imagePullPolicy: Always
           ports:
             - name: http
               containerPort: 8000
