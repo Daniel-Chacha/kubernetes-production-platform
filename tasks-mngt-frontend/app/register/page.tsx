@@ -3,6 +3,7 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 type ApiError = {
   detail?: unknown;
@@ -48,6 +49,8 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const router = useRouter()
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
@@ -71,7 +74,7 @@ export default function RegisterPage() {
           (data as ApiError).accountCreated === true;
 
         if (accountCreated) {
-          window.location.assign("/login");
+          router.push("/login")
           return;
         }
 
@@ -79,7 +82,7 @@ export default function RegisterPage() {
         return;
       }
 
-      window.location.assign("/");
+      router.push("/")
     } catch {
       setError("Unable to connect to the server. Please try again.");
     } finally {

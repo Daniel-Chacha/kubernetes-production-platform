@@ -3,6 +3,8 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+
 
 type ApiError = {
   detail?: unknown;
@@ -13,6 +15,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const router = useRouter()
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -45,7 +49,8 @@ export default function LoginPage() {
         return;
       }
 
-      window.location.assign("/dashboard");
+      router.push("/dashboard")
+
     } catch {
       setError("Unable to connect to the server. Please try again.");
     } finally {

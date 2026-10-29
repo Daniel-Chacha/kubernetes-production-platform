@@ -1,6 +1,8 @@
 
 "use client";
 
+import Link from "next/link";
+
 import {
   type FormEvent,
   useCallback,
@@ -343,13 +345,13 @@ export default function Home() {
   return (
     <main className="dashboard">
       <aside className="sidebar">
-        <a className="brand" href="/" aria-label="Taskflow home">
+        <Link className="brand" href="/" aria-label="Taskflow home">
           <span className="brand-mark">T</span>
           <span>
             <strong>Taskflow</strong>
             <small>WORKSPACE</small>
           </span>
-        </a>
+        </Link>
 
         <div className="sidebar-section-label">WORKSPACE</div>
 
