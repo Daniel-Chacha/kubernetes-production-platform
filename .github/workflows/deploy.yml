@@ -18,6 +18,7 @@ jobs:
   deploy:
     name: Deploy TaskFlow
     runs-on: [self-hosted, linux, x64]
+
     if: >-
       (github.event_name == 'workflow_dispatch' &&
        github.ref == 'refs/heads/master') ||
@@ -33,12 +34,40 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "Kubernetes context:"
+          echo "===== Kubernetes context ====="
           kubectl config current-context
 
+          echo "===== Namespace ====="
           kubectl get namespace portfolio
+
+          echo "===== API deployment ====="
           kubectl -n portfolio get deployment task-api
+
+          echo "===== Frontend deployment ====="
           kubectl -n portfolio get deployment task-frontend
+
+      - name: Capture previous images
+        id: previous
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          API_IMAGE="$(kubectl -n portfolio get deployment task-api \
+            -o jsonpath='{.spec.template.spec.containers[?(@.name=="task-api")].image}')"
+
+          FRONTEND_IMAGE="$(kubectl -n portfolio get deployment task-frontend \
+            -o jsonpath='{.spec.template.spec.containers[?(@.name=="frontend")].image}')"
+
+          if [[ -z "$API_IMAGE" || -z "$FRONTEND_IMAGE" ]]; then
+            echo "Could not determine both previously deployed images."
+            exit 1
+          fi
+
+          echo "Previous API image: ${API_IMAGE}"
+          echo "Previous frontend image: ${FRONTEND_IMAGE}"
+
+          echo "api_image=${API_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "frontend_image=${FRONTEND_IMAGE}" >> "$GITHUB_OUTPUT"
 
       - name: Prepare image references
         id: image
@@ -47,35 +76,48 @@ jobs:
           set -euo pipefail
 
           OWNER="${GITHUB_REPOSITORY_OWNER,,}"
-            DEPLOY_SHA="${GITHUB_SHA}"
+          DEPLOY_SHA="${GITHUB_SHA}"
 
-            if [[ "${GITHUB_EVENT_NAME}" == "workflow_run" ]]; then
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_run" ]]; then
             DEPLOY_SHA="${{ github.event.workflow_run.head_sha }}"
-            fi
+          fi
 
-            TAG="sha-${DEPLOY_SHA}"
+          TAG="sha-${DEPLOY_SHA}"
+
+          echo "Deploying commit: ${DEPLOY_SHA}"
 
           echo "api=ghcr.io/${OWNER}/task-api:${TAG}" \
             >> "$GITHUB_OUTPUT"
+
           echo "frontend=ghcr.io/${OWNER}/task-frontend:${TAG}" \
             >> "$GITHUB_OUTPUT"
 
       - name: Deploy API
+        shell: bash
         run: |
+          set -euo pipefail
+
           kubectl -n portfolio set image deployment/task-api \
             task-api="${{ steps.image.outputs.api }}"
 
           kubectl -n portfolio rollout status deployment/task-api \
             --timeout=180s
 
+      - name: Mark deployment started
+        id: deployment_started
+        shell: bash
+        run: echo "started=true" >> "$GITHUB_OUTPUT"
+
       - name: Deploy frontend
+        shell: bash
         run: |
+          set -euo pipefail
+
           kubectl -n portfolio set image deployment/task-frontend \
             frontend="${{ steps.image.outputs.frontend }}"
 
           kubectl -n portfolio rollout status deployment/task-frontend \
             --timeout=180s
-
 
       - name: Verify HTTPS endpoint
         shell: bash
@@ -83,13 +125,13 @@ jobs:
           set -euo pipefail
 
           for attempt in {1..6}; do
-            status=$(curl --silent --show-error \
+            status="$(curl --silent \
               --output /dev/null \
               --write-out '%{http_code}' \
               --max-time 15 \
-              https://taskflow.test/ 2>/dev/null) || status="000"
+              https://taskflow.test 2>/dev/null)" || status="000"
 
-            echo "HTTPS check attempt ${attempt}/6: HTTP ${status}"
+            echo "HTTPS check ${attempt}/6: HTTP ${status}"
 
             if [[ "$status" =~ ^2[0-9][0-9]$ ]]; then
               echo "HTTPS endpoint is healthy."
@@ -101,21 +143,92 @@ jobs:
             fi
           done
 
-          echo "HTTPS endpoint remained unhealthy after 6 attempts."
+          echo "HTTPS endpoint failed verification."
           exit 1
 
-
-      - name: Roll back application deployments on failure
-        if: failure() && steps.preflight.outcome == 'success'
+      - name: Roll back application images on failure
+        if: >-
+          failure() &&
+          steps.preflight.outcome == 'success' &&
+          steps.previous.outcome == 'success' &&
+          steps.deployment_started.outcome == 'success'
         shell: bash
+        env:
+          PREVIOUS_API_IMAGE: ${{ steps.previous.outputs.api_image }}
+          PREVIOUS_FRONTEND_IMAGE: ${{ steps.previous.outputs.frontend_image }}
         run: |
-          echo "Deployment verification failed; attempting rollback."
+          set -uo pipefail
 
-          kubectl -n portfolio rollout undo deployment/task-api || true
-          kubectl -n portfolio rollout undo deployment/task-frontend || true
+          echo "Deployment failed. Restoring previous application images."
 
-          kubectl -n portfolio rollout status deployment/task-api \
-            --timeout=180s || true
+          rollback_failed=0
 
-          kubectl -n portfolio rollout status deployment/task-frontend \
-            --timeout=180s || true
+          echo "===== Restore API image ====="
+          if kubectl -n portfolio set image deployment/task-api \
+            "task-api=${PREVIOUS_API_IMAGE}"; then
+            echo "API image restoration requested."
+          else
+            echo "ERROR: Failed to restore API image."
+            rollback_failed=1
+          fi
+
+          echo "===== Restore frontend image ====="
+          if kubectl -n portfolio set image deployment/task-frontend \
+            "frontend=${PREVIOUS_FRONTEND_IMAGE}"; then
+            echo "Frontend image restoration requested."
+          else
+            echo "ERROR: Failed to restore frontend image."
+            rollback_failed=1
+          fi
+
+          echo "===== Verify API recovery ====="
+          if kubectl -n portfolio rollout status deployment/task-api \
+            --timeout=180s; then
+            echo "API rollout recovered."
+          else
+            echo "ERROR: API recovery failed."
+            rollback_failed=1
+          fi
+
+          echo "===== Verify frontend recovery ====="
+          if kubectl -n portfolio rollout status deployment/task-frontend \
+            --timeout=180s; then
+            echo "Frontend rollout recovered."
+          else
+            echo "ERROR: Frontend recovery failed."
+            rollback_failed=1
+          fi
+
+          echo "===== Verify HTTPS after recovery ====="
+          endpoint_healthy=0
+
+          for attempt in {1..6}; do
+            status="$(curl --silent \
+              --output /dev/null \
+              --write-out '%{http_code}' \
+              --max-time 15 \
+              https://taskflow.test 2>/dev/null)" || status="000"
+
+            echo "Recovery HTTPS check ${attempt}/6: HTTP ${status}"
+
+            if [[ "$status" =~ ^2[0-9][0-9]$ ]]; then
+              endpoint_healthy=1
+              break
+            fi
+
+            if [[ "$attempt" -lt 6 ]]; then
+              sleep 10
+            fi
+          done
+
+          if [[ "$endpoint_healthy" -ne 1 ]]; then
+            echo "ERROR: HTTPS endpoint is still unhealthy after recovery."
+            rollback_failed=1
+          fi
+
+          if [[ "$rollback_failed" -ne 0 ]]; then
+            echo "ERROR: Rollback did not fully recover the application."
+            exit 1
+          fi
+
+          echo "Rollback completed and HTTPS is healthy."
