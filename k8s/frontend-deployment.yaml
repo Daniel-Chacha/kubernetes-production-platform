@@ -16,6 +16,7 @@ spec:
       labels:
         app: task-frontend
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: frontend
           image: ghcr.io/daniel-chacha/task-frontend:sha-89a83084e79f6b79fc21d46e422115aa8f2ef6f3

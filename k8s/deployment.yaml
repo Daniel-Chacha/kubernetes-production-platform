@@ -15,8 +15,11 @@ spec:
       labels:
         app: task-api
     spec:
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
         fsGroup: 999
       containers:
         - name: task-api
@@ -66,6 +69,14 @@ spec:
               port: http
             initialDelaySeconds: 20
             periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 999
+            capabilities:
+              drop:
+                - ALL
       volumes:
         - name: task-api-data
           persistentVolumeClaim:

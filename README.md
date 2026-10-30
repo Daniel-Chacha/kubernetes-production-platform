@@ -1,8 +1,14 @@
-# Taskflow — Kubernetes Production Platform
+# TaskFlow — Kubernetes Production Platform
 
-A containerized, full-stack task management application deployed on Kubernetes, demonstrating cloud-native application architecture, service discovery, ingress routing, persistent storage, health monitoring, and security-conscious deployment practices.
+A full-stack, containerized task management platform deployed on Kubernetes. This project demonstrates cloud-native application architecture, Kubernetes orchestration, persistent storage, HTTPS ingress, observability, container security, and automated CI/CD.
 
-The project combines a **Django REST API** with a **Next.js dashboard**, packaged as separate Docker images and deployed as Kubernetes workloads. The local environment runs on Minikube, with NGINX Ingress routing browser traffic through a custom development hostname.
+TaskFlow combines a **Django REST API**, a **Next.js frontend**, and **PostgreSQL**, with Prometheus, Grafana, and Alertmanager providing monitoring and alerting.
+
+The application runs on a local Minikube cluster and is exposed through NGINX Ingress using HTTPS.
+
+**Repository:** [Daniel-Chacha/kubernetes-production-platform](https://github.com/Daniel-Chacha/kubernetes-production-platform)
+
+---
 
 ## Table of Contents
 
@@ -10,283 +16,354 @@ The project combines a **Django REST API** with a **Next.js dashboard**, package
 - [Architecture](#architecture)
 - [Technology Stack](#technology-stack)
 - [Features](#features)
+- [Monitoring and Observability](#monitoring-and-observability)
+- [Security](#security)
+- [CI/CD Pipeline](#cicd-pipeline)
 - [Project Structure](#project-structure)
 - [Prerequisites](#prerequisites)
-- [Local Development and Deployment](#local-development-and-deployment)
-- [Access the Application](#access-the-application)
+- [Accessing the Application](#accessing-the-application)
 - [Kubernetes Operations](#kubernetes-operations)
-- [API Endpoints](#api-endpoints)
-- [Security and Reliability](#security-and-reliability)
+- [API and Database](#api-and-database)
+- [Documentation](#documentation)
 - [Current Limitations](#current-limitations)
-- [Roadmap](#roadmap)
+- [Future Improvements](#future-improvements)
 - [Author](#author)
+
+---
 
 ## Overview
 
-Taskflow is a full-stack application built to explore how web applications are containerized, deployed, and operated using Kubernetes.
+TaskFlow is a practical Kubernetes platform engineering project built around a working task management application.
 
-Rather than running the frontend and backend as a single application, each component runs in its own container and is managed through Kubernetes Deployments and Services.
+The frontend and backend are independently containerized and deployed as Kubernetes workloads. Kubernetes Services provide stable internal networking, while NGINX Ingress handles external application access.
 
-The project emphasizes practical DevOps and platform engineering concepts:
+The project goes beyond basic container orchestration by incorporating:
 
-- Containerizing applications with Docker.
-- Deploying and managing workloads with Kubernetes.
-- Discovering internal services through Kubernetes DNS.
-- Routing HTTP traffic through NGINX Ingress.
-- Persisting application data using PersistentVolumeClaims.
-- Configuring health probes and resource requests and limits.
-- Managing application secrets with Kubernetes Secrets.
-- Running containers with non-root users and restricted capabilities.
+- PostgreSQL with persistent Kubernetes storage.
+- Kubernetes Deployments, Services, ConfigMaps, and Secrets.
+- NGINX Ingress with locally trusted HTTPS.
+- Readiness and liveness probes.
+- CPU and memory resource requests and limits.
+- Prometheus metrics collection.
+- Grafana dashboards.
+- Alertmanager email notifications.
+- Trivy container vulnerability scanning.
+- GitHub Actions CI/CD.
+- Deployment failure handling using previously deployed image references.
+- Non-root containers and restricted Linux capabilities.
 
-The initial deployment targets a local Kubernetes cluster. The architecture provides a foundation for extending the application toward a production cloud environment.
+The current deployment target is a local Minikube environment. It is a portfolio project demonstrating production-oriented Kubernetes practices, not a highly available production service.
 
 ## Architecture
+
+### High-level architecture
 
 ```mermaid
 flowchart TD
     User[Browser]
     Ingress[NGINX Ingress Controller]
+    FrontendService[Frontend ClusterIP Service]
     Frontend[Next.js Frontend]
+    APIService[API ClusterIP Service]
     API[Django REST API]
-    DB[(SQLite Database)]
-    PVC[PersistentVolumeClaim]
-    Secret[Kubernetes Secret]
-    Config[ConfigMap]
+    PostgresService[PostgreSQL ClusterIP Service]
+    Postgres[(PostgreSQL)]
+    PostgresPVC[(PostgreSQL PVC)]
 
-    User -->|HTTP: taskflow.test| Ingress
-    Ingress -->|Service: task-frontend| Frontend
-    Frontend -->|Internal Kubernetes DNS| API
-    API --> DB
-    DB --- PVC
-    Secret -.->|Environment variable| API
-    Config -.->|Application configuration| API
+    User -->|HTTPS: taskflow.test| Ingress
+    Ingress --> FrontendService
+    FrontendService --> Frontend
+    Frontend -->|Internal Kubernetes DNS| APIService
+    APIService --> API
+    API --> PostgresService
+    PostgresService --> Postgres
+    Postgres --> PostgresPVC
 ```
 
 ### Request flow
 
-1. A user opens `http://taskflow.test` in a browser.
-2. The NGINX Ingress Controller receives the HTTP request.
-3. The Ingress routes traffic to the `task-frontend` Kubernetes Service.
+1. A user opens `https://taskflow.test`.
+2. NGINX Ingress receives the HTTPS request and terminates TLS.
+3. Ingress routes traffic to the frontend Kubernetes Service.
 4. The Next.js application serves the dashboard.
-5. Frontend API requests are proxied to the Django API through the internal Kubernetes Service DNS name.
-6. Django processes task requests and reads or writes data to SQLite.
-7. The database file is stored on a mounted persistent volume.
+5. Frontend API requests are proxied to the Django API using its internal Kubernetes DNS name.
+6. The Django API processes requests and communicates with PostgreSQL.
+7. PostgreSQL stores application data on persistent storage.
 
-The frontend and backend are independently containerized and deployed, while Kubernetes Services provide stable internal network endpoints.
+### Monitoring architecture
+
+```mermaid
+flowchart LR
+    API[Django API]
+    Prometheus[Prometheus]
+    Grafana[Grafana]
+    Alertmanager[Alertmanager]
+    Email[Email Notifications]
+
+    Prometheus -->|/metrics| API
+    Grafana -->|Queries| Prometheus
+    Prometheus -->|Firing alerts| Alertmanager
+    Alertmanager --> Email
+```
+
+Application workloads run in the `portfolio` namespace. Monitoring components run in the `monitoring` namespace.
 
 ## Technology Stack
 
 | Layer | Technologies |
 |---|---|
 | Frontend | Next.js, React, TypeScript |
-| Backend | Python, Django, Django REST endpoints |
-| Database | SQLite |
+| Backend | Python, Django |
+| Database | PostgreSQL |
 | Containerization | Docker |
+| Container registry | GitHub Container Registry (GHCR) |
 | Orchestration | Kubernetes |
 | Local cluster | Minikube |
 | Ingress | NGINX Ingress Controller |
-| Configuration | Kubernetes ConfigMaps and Secrets |
-| Storage | PersistentVolumeClaim |
-| Health monitoring | Kubernetes readiness and liveness probes |
-| Development environment | Linux, Kali Linux |
+| TLS | mkcert, Kubernetes TLS Secret |
+| Metrics collection | Prometheus |
+| Dashboards | Grafana |
+| Alerting | Alertmanager |
+| Vulnerability scanning | Trivy |
+| CI/CD | GitHub Actions |
+| Deployment runner | Self-hosted Linux x64 runner |
 
 ## Features
 
-### Task management dashboard
+### Task management application
 
-- View tasks retrieved from the backend API.
-- Create tasks through the dashboard.
-- Filter tasks by all, pending, and completed states.
-- Display task counts and application feedback.
-- Handle loading, success, and error states.
+- User authentication.
+- Task creation and management.
+- View all tasks.
+- Filter tasks by pending and completed status.
+- Dashboard interface with task information and status.
 
 ### Django REST API
 
-- Expose a health endpoint for Kubernetes probes.
-- Retrieve and create tasks through HTTP endpoints.
-- Store task data in SQLite.
-- Use environment-based configuration for application settings.
+- REST endpoints for task management.
+- Authentication endpoints.
+- Health endpoint for application health checks.
+- Prometheus metrics endpoint.
+- PostgreSQL integration.
+- Environment-based configuration.
 
-### Containerized deployment
+### Kubernetes deployment
 
-- Build independent Docker images for the frontend and backend.
-- Run the applications as Kubernetes Deployments.
-- Expose each application through a ClusterIP Service.
-- Configure frontend-to-backend communication using Kubernetes DNS.
+- Separate frontend, backend, and database workloads.
+- ClusterIP Services for internal service discovery.
+- NGINX Ingress for application routing.
+- HTTPS access using a Kubernetes TLS Secret.
+- PersistentVolumeClaims for database and monitoring data.
+- ConfigMaps and Secrets for application configuration.
+- Readiness and liveness probes.
+- CPU and memory resource requests and limits.
 
-### Kubernetes networking
+### Observability
 
-- Route browser traffic through NGINX Ingress.
-- Use the `taskflow.test` development hostname.
-- Keep the backend accessible through its internal Kubernetes Service rather than requiring a separate public endpoint.
+- Prometheus metrics collection.
+- Grafana dashboard for TaskFlow API observability.
+- Alertmanager for alert routing and email notifications.
+- Alerts for API availability, high HTTP 5xx rates, and elevated request latency.
+- Persistent Prometheus, Grafana, and Alertmanager storage.
 
-### Reliability and resource management
+## Monitoring and Observability
 
-- Configure readiness and liveness probes.
-- Define CPU and memory requests and limits.
-- Persist the backend database using a PersistentVolumeClaim.
-- Configure application secrets through Kubernetes Secrets.
+The monitoring stack is deployed separately in the `monitoring` namespace.
+
+| Component | Purpose |
+|---|---|
+| Prometheus | Scrapes and stores application metrics |
+| Grafana | Visualizes application and infrastructure metrics |
+| Alertmanager | Groups and routes firing alerts |
+
+The TaskFlow API exposes metrics through `/metrics`.
+
+The monitoring configuration includes visibility into:
+
+- API request rates.
+- HTTP response status codes.
+- Request latency, including p95 latency.
+- HTTP 5xx responses.
+- API process memory and CPU.
+- Prometheus scrape health.
+
+Configured alerts include:
+
+| Alert | Condition | Severity |
+|---|---|---|
+| `TaskAPIUnavailable` | API scrape unavailable or target absent | Critical |
+| `TaskAPIHigh5xxRate` | HTTP 5xx rate exceeds configured threshold | Warning |
+| `TaskAPIHighLatency` | p95 request latency exceeds configured threshold | Warning |
+
+Alertmanager is configured to send email notifications through SMTP. SMTP credentials are supplied using a Kubernetes Secret.
+
+Prometheus data retention is configured for seven days.
+
+See [Monitoring and Observability](docs/monitoring-and-observability.md) for configuration and access instructions.
+
+## Security
+
+Security practices implemented in the project include:
+
+- Non-root application containers.
+- Restricted Linux capabilities.
+- Disabled privilege escalation.
+- Kubernetes Secrets for sensitive application configuration.
+- Separation of configuration and credentials using ConfigMaps and Secrets.
+- HTTPS through NGINX Ingress.
+- Trivy vulnerability scanning during CI.
+- Commit-SHA image tags for deployment traceability.
+- Disabled automatic service account token mounting where configured.
+
+Trivy is configured to scan operating system packages and application libraries for HIGH and CRITICAL vulnerabilities, with unfixed vulnerabilities ignored by the configured scan.
+
+NetworkPolicies are not enforced in the current cluster configuration.
+
+## CI/CD Pipeline
+
+GitHub Actions automates application validation, image builds, vulnerability scanning, image publication, and deployment.
+
+### Continuous Integration
+
+The CI workflow performs:
+
+1. Django dependency installation, checks, and tests.
+2. Frontend dependency installation, linting, and production build.
+3. Docker image builds using Docker Buildx.
+4. Trivy vulnerability scanning.
+5. Image publication to GHCR after successful pushes to `master`.
+
+The backend CI environment uses SQLite for automated checks and tests. The deployed Kubernetes application uses PostgreSQL.
+
+### Continuous Deployment
+
+The deployment workflow:
+
+1. Runs after successful CI on `master`, or through manual workflow dispatch.
+2. Uses a self-hosted Linux x64 runner with Kubernetes access.
+3. Verifies the Kubernetes context and required resources.
+4. Records the previously deployed API and frontend image references.
+5. Updates the Deployments to use commit-SHA image tags.
+6. Waits for Kubernetes rollouts.
+7. Verifies application availability over HTTPS.
+8. Attempts to restore the previous image references if deployment or health verification fails.
+
+The deployment recovery mechanism restores application image references. It does not automatically reverse database schema changes or restore database data.
+
+Workflow definitions:
+
+- `.github/workflows/ci.yml`
+- `.github/workflows/deploy.yml`
+
+See [CI/CD Documentation](docs/ci-cd.md) for more details.
 
 ## Project Structure
 
 ```text
 kubernetes-production-platform/
-├── app/                          # Django backend
-│   ├── config/                   # Django project configuration
-│   ├── tasks/                    # Task management application
-│   └── manage.py
-├── k8s/                          # Kubernetes manifests
-│   ├── ingress.yaml
-│   ├── frontend-deployment.yaml
-│   └── ...                       # Additional deployment/configuration files
-├── tasks-mngt-frontend/          # Next.js frontend
-│   ├── app/                      # App Router pages and styles
-│   ├── public/
+├── app/                              # Django backend
+│   ├── config/                       # Django configuration
+│   ├── tasks/                        # Task and authentication logic
 │   ├── Dockerfile
-│   ├── next.config.ts
+│   ├── manage.py
+│   └── requirements.txt
+│
+├── tasks-mngt-frontend/              # Next.js frontend
+│   ├── app/                          # Application pages and styles
+│   ├── lib/                          # API and authentication helpers
+│   ├── Dockerfile
 │   └── package.json
+│
+├── k8s/                              # Kubernetes manifests
+│   ├── namespace.yaml
+│   ├── configmap.yaml
+│   ├── deployment.yaml
+│   ├── frontend-deployment.yaml
+│   ├── service.yaml
+│   ├── ingress.yaml
+│   ├── postgres-deployment.yaml
+│   ├── postgres-service.yaml
+│   ├── postgres-pvc.yaml
+│   └── monitoring/
+│       ├── alert-rules.yaml
+│       ├── prometheus-configmap.yaml
+│       ├── prometheus-deployment.yaml
+│       ├── prometheus-pvc.yaml
+│       ├── prometheus-rules-configmap.yaml
+│       └── prometheus-svc.yaml
+│
+├── scripts/                          # Operational scripts
+│   └── import_tasks_to_postgres.py
+│
+├── docs/                             # Project documentation
+│   ├── architecture.md
+│   ├── deployment.md
+│   ├── monitoring-and-observability.md
+│   ├── operations-runbook.md
+│   └── ci-cd.md
+│
+├── .github/
+│   └── workflows/
+│       ├── ci.yml
+│       └── deploy.yml
+│
 ├── .gitignore
 └── README.md
 ```
 
-The exact manifest filenames may evolve as deployment configuration expands.
-
 ## Prerequisites
 
-Install the following tools on your development machine:
+To work with the project locally, install:
 
 - [Git](https://git-scm.com/)
 - [Docker](https://docs.docker.com/get-docker/)
-- [kubectl](https://kubernetes.io/docs/tasks/tools/)
 - [Minikube](https://minikube.sigs.k8s.io/docs/start/)
-- [Node.js](https://nodejs.org/) and npm for local frontend development
-- Python and pip for local backend development
+- [kubectl](https://kubernetes.io/docs/tasks/tools/)
+- [mkcert](https://github.com/FiloSottile/mkcert)
+- Python and pip for local backend development.
+- Node.js and npm for local frontend development.
 
-The Docker daemon must be running, and the machine must have enough CPU and memory to run the local Kubernetes cluster.
+The Docker daemon must be running before starting Minikube with the Docker driver.
 
-## Local Development and Deployment
+## Accessing the Application
 
-### 1. Clone the repository
+The configured local application hostname is:
 
-```bash
-git clone https://github.com/Daniel-Chacha/kubernetes-production-platform.git
-cd kubernetes-production-platform
+```text
+https://taskflow.test
 ```
 
+The hostname must resolve to the Minikube IP address.
 
-### 2. Start Minikube
-
-Start a local Kubernetes cluster using Docker as the driver:
-
-```bash
-minikube start --driver=docker --cpus=2 --memory=3072
-```
-
-Enable the required addons:
-
-```bash
-minikube addons enable metrics-server
-minikube addons enable ingress
-```
-
-Verify the cluster:
-
-```bash
-kubectl get nodes
-kubectl get pods -n ingress-nginx
-```
-
-Wait for the Ingress Controller to become ready before testing ingress routing.
-
-### 3. Build the Django backend image
-
-Build the backend image using the Dockerfile in the backend application directory. If your Dockerfile is located at `app/Dockerfile`, run:
-
-```bash
-eval "$(minikube docker-env)"
-
-docker build -t task-api:1.0 ./app
-```
-
-If your Dockerfile is located elsewhere, adjust the build context to match the repository.
-
-### 4. Build the Next.js frontend image
-
-```bash
-cd tasks-mngt-frontend
-
-eval "$(minikube docker-env)"
-
-docker build \
-  --build-arg API_INTERNAL_URL=http://task-api.portfolio.svc.cluster.local \
-  -t task-frontend:1.0 .
-
-cd ..
-```
-
-The frontend uses the Kubernetes Service DNS name to reach the backend. The internal API URL is configured during the frontend build because the Next.js rewrite destination is part of the generated application configuration.
-
-### 5. Deploy the application
-
-Create the namespace if it does not already exist:
-
-```bash
-kubectl create namespace portfolio \
-  --dry-run=client -o yaml | kubectl apply -f -
-```
-
-Apply the Kubernetes manifests from the repository. If the manifests are stored directly in `k8s/`, use:
-
-```bash
-kubectl apply -f k8s/
-```
-
-**Configuration note:** The backend Deployment references a Kubernetes Secret named `task-api-secret`, a ConfigMap named `task-api-config`, and a PersistentVolumeClaim named `task-api-data`. Ensure these resources are created with appropriate values before deploying the backend. Do not commit actual secret values to Git.
-
-If your manifests use a different namespace or depend on a particular application order, follow those definitions.
-
-### 6. Verify the deployment
-
-```bash
-kubectl get all -n portfolio
-kubectl get ingress -n portfolio
-kubectl get pvc -n portfolio
-kubectl rollout status deployment/task-api -n portfolio
-kubectl rollout status deployment/task-frontend -n portfolio
-```
-
-Check pod logs if a workload fails to start:
-
-```bash
-kubectl logs deployment/task-api -n portfolio
-kubectl logs deployment/task-frontend -n portfolio
-```
-
-## Access the Application
-
-Get the Minikube IP:
+Check the current Minikube IP:
 
 ```bash
 minikube ip
 ```
 
-Add the IP and hostname to `/etc/hosts`:
+The local `/etc/hosts` file should contain an entry mapping that IP to `taskflow.test`:
 
 ```text
-MINIKUBE_IP taskflow.test
+<MINIKUBE_IP> taskflow.test
 ```
 
-Replace `MINIKUBE_IP` with the actual output of `minikube ip`. Editing `/etc/hosts` requires administrator privileges.
+Replace `<MINIKUBE_IP>` with the actual Minikube IP.
 
-Open the application:
+The local TLS certificate is generated using mkcert, and its certificate authority must be trusted by the local machine.
 
-**http://taskflow.test**
+Verify application access:
 
-This hostname is for local development on a machine configured to resolve it. It is not a publicly accessible domain and does not provide HTTPS by itself.
+```bash
+curl -I https://taskflow.test
+```
+
+For detailed deployment instructions, see the [Deployment Guide](docs/deployment.md).
 
 ## Kubernetes Operations
 
-### Inspect workloads
+The following commands are useful when inspecting the application.
+
+Check application workloads:
 
 ```bash
 kubectl get pods -n portfolio
@@ -295,132 +372,84 @@ kubectl get services -n portfolio
 kubectl get ingress -n portfolio
 ```
 
-### Inspect application logs
+Check persistent storage:
+
+```bash
+kubectl get pvc -n portfolio
+kubectl get pv
+```
+
+Inspect application logs:
 
 ```bash
 kubectl logs deployment/task-api -n portfolio
 kubectl logs deployment/task-frontend -n portfolio
+kubectl logs deployment/task-postgres -n portfolio
 ```
 
-### Describe a failing pod
+Check resource utilization:
 
 ```bash
-kubectl describe pod <pod-name> -n portfolio
+kubectl top nodes
+kubectl top pods -A
 ```
 
-### Restart a deployment
+For incident investigation and recovery procedures, see the [Operations Runbook](docs/operations-runbook.md).
 
-```bash
-kubectl rollout restart deployment/task-api -n portfolio
-kubectl rollout restart deployment/task-frontend -n portfolio
-```
+## API and Database
 
-### Check rollout history
+The backend is a Django REST API. The frontend communicates with it through the internal Kubernetes Service.
 
-```bash
-kubectl rollout history deployment/task-api -n portfolio
-kubectl rollout history deployment/task-frontend -n portfolio
-```
+The deployed application uses PostgreSQL.
 
-### Test the backend health endpoint
+The database connection is configured through Kubernetes ConfigMaps and Secrets. The database Service is named `task-postgres` and listens on port `5432`.
 
-```bash
-kubectl port-forward -n portfolio service/task-api 8081:80
-```
+PostgreSQL data is stored using the `task-postgres-data` PersistentVolumeClaim.
 
-In another terminal:
+The backend CI workflow uses SQLite for its automated checks and tests; this does not represent the deployed database configuration.
 
-```bash
-curl -i http://127.0.0.1:8081/health/
-curl -i http://127.0.0.1:8081/api/tasks/
-```
+## Documentation
 
-Stop port forwarding with `Ctrl+C` when finished.
+Detailed project documentation is available in the `docs/` directory.
 
-## API Endpoints
-
-| Method | Endpoint | Purpose |
-|---|---|---|
-| GET | `/health/` | Report backend health |
-| GET | `/api/tasks/` | Retrieve tasks |
-| POST | `/api/tasks/` | Create a task |
-
-### Example: Health check
-
-```bash
-curl http://127.0.0.1:8081/health/
-```
-
-Expected response:
-
-```json
-{
-  "status": "healthy",
-  "service": "task-api"
-}
-```
-
-### Example: Retrieve tasks
-
-```bash
-curl http://127.0.0.1:8081/api/tasks/
-```
-
-### Example: Create a task
-
-```bash
-curl -X POST http://127.0.0.1:8081/api/tasks/ \
-  -H "Content-Type: application/json" \
-  -d '{"title":"Validate Kubernetes deployment"}'
-```
-
-The API examples above assume that port forwarding is active and that the API accepts the request in this format.
-
-## Security and Reliability
-
-The current implementation incorporates several foundational practices:
-
-- **Secret management:** Django's secret key is injected through a Kubernetes Secret instead of being hardcoded in the Deployment manifest.
-- **Configuration separation:** Non-sensitive configuration is supplied through a ConfigMap.
-- **Container security:** The workloads are configured to use non-root users and restricted Linux capabilities where applicable.
-- **Resource management:** CPU and memory requests and limits help constrain resource consumption.
-- **Health checks:** Readiness and liveness probes allow Kubernetes to monitor application availability.
-- **Persistent storage:** The backend database is stored on a persistent volume rather than relying exclusively on the container's writable layer.
-- **Internal networking:** The frontend communicates with the backend using Kubernetes DNS.
-
-These measures are useful foundations, but they do not by themselves make the application production-ready.
+| Document | Description |
+|---|---|
+| [Architecture](docs/architecture.md) | System architecture, request flow, Kubernetes resources, and security design |
+| [Deployment Guide](docs/deployment.md) | Minikube deployment, configuration, ingress, HTTPS, and verification |
+| [Monitoring and Observability](docs/monitoring-and-observability.md) | Prometheus, Grafana, Alertmanager, metrics, and alerts |
+| [Operations Runbook](docs/operations-runbook.md) | Health checks, troubleshooting, and operational procedures |
+| [CI/CD](docs/ci-cd.md) | GitHub Actions, Docker builds, Trivy, GHCR, and Kubernetes deployment |
 
 ## Current Limitations
 
-- The current environment is a local Minikube cluster.
-- The application uses SQLite rather than a managed production database.
-- The local `taskflow.test` hostname is not publicly routable.
-- HTTPS and public-domain configuration are not part of the current local setup.
-- Authentication, authorization, API rate limiting, and production-grade CSRF protection require further review.
-- Automated testing, continuous integration, continuous delivery, centralized logging, and production monitoring can be expanded.
+The project deliberately documents the boundaries of the current environment:
 
-## Roadmap
+- Deployment targets a local Minikube cluster rather than a managed, highly available Kubernetes platform.
+- NetworkPolicies are not enforced in the current cluster configuration.
+- Automated database backup and restore procedures are not implemented.
+- The deployment workflow depends on a self-hosted runner with access to the local Kubernetes environment.
+- Application image recovery does not provide database rollback.
+- The environment does not have a formal production availability guarantee.
 
-- [ ] Add automated backend tests and frontend tests.
-- [ ] Integrate linting and test execution into a CI pipeline.
-- [ ] Automate Docker image builds and vulnerability scanning.
-- [ ] Implement and verify production-grade authentication and authorization.
-- [ ] Review CSRF handling, allowed hosts, and Django production security settings.
-- [ ] Add structured logging and centralized observability.
-- [ ] Evaluate PostgreSQL for durable multi-user deployments.
-- [ ] Configure HTTPS and a public ingress endpoint.
-- [ ] Deploy to a cloud Kubernetes environment.
-- [ ] Add documented backup and restore procedures.
-- [ ] Document resource usage, scaling, and incident troubleshooting.
+PersistentVolumeClaims should not be deleted during routine troubleshooting because they may contain application or monitoring data.
+
+## Future Improvements
+
+Potential extensions include:
+
+- Deploying to a managed Kubernetes platform.
+- Introducing a policy-capable CNI such as Calico or Cilium and enforcing NetworkPolicies.
+- Implementing automated PostgreSQL backup and restore.
+- Adding database migration management to the deployment process.
+- Expanding monitoring to include Kubernetes infrastructure metrics.
+- Introducing GitOps-based deployment management.
+- Adding centralized log aggregation.
+- Implementing more comprehensive integration and end-to-end tests.
 
 ## Author
 
-**Daniel Chacha**
+Daniel Chacha
 
-Software Engineer | DevOps and Kubernetes
+GitHub: [Daniel-Chacha](https://github.com/Daniel-Chacha)
 
-This project demonstrates hands-on work with full-stack application development, containerization, Kubernetes deployment, networking, persistence, and application operations.
-
----
-
-If you find an issue or have suggestions for improvement, feel free to open an issue or submit a pull request.
+Built as a hands-on Kubernetes, DevOps, and platform engineering portfolio project.
